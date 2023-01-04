@@ -1,0 +1,752 @@
+substitutions:
+  device_name: Modbus Interface
+
+esp32:
+  board: esp-wrover-kit
+  framework:
+    type: arduino
+    version: 2.0.6
+
+esphome:
+  name: modbus-interface
+  includes:
+    - esp-lg-control/lg-heatpump-control/lg-heatpump-state-machine.h
+  on_boot:
+    priority: 200
+    then:
+      lambda: !lambda |-
+          //instant on (in case of controller restart during run)
+          id(relay_backup_heat).turn_off();
+          if(id(thermostat_signal).state) {
+            id(relay_pump).turn_on();
+            id(relay_heat).turn_on();
+          } else {
+            id(relay_pump).turn_off();
+            id(relay_heat).turn_off();
+          }
+          id(controller_state).publish_state("Initialiseren");
+
+# Enable logging. Disable modbus controller debug messages
+logger:
+  logs:
+    modbus_controller.sensor: WARN
+    modbus_controller.output: WARN
+    modbus.number: WARN
+    esp32.preferences: WARN
+    sensor: WARN
+    text_sensor: WARN
+    dallas.sensor: WARN #disable if dallas is not used
+    number: WARN
+
+ethernet:
+  type: LAN8720
+  mdc_pin: GPIO23
+  mdio_pin: GPIO18
+  clk_mode: GPIO0_IN
+  phy_addr: 1
+  power_pin: GPIO16
+
+# Enable Home Assistant API
+api:
+  encryption:
+    key: "PNy4/SG13BNxOAzLHjcH0s9HcINHWykelhGp8y7ObA4="
+
+ota:
+  password: "49a161442fac5715dd49f2de907e25b3"
+
+status_led:
+  pin: GPIO02
+
+packages:
+  # lg_modbus: !include esp-lg-control/lg-heatpump-control/sensors/lg-heatpump-modbus.yaml #include file with modbus sensors
+  without_external_thermostat: !include esp-lg-control/lg-heatpump-control/sensors/lg-without-external-thermostat.yaml
+  without_external_relays: !include esp-lg-control/lg-heatpump-control/sensors/lg-without-external-relays.yaml
+  
+uart:
+  id: uart_modbus
+  tx_pin: GPIO17 #TxD2
+  rx_pin: GPIO05 #RxD2
+  baud_rate: 9600 #19200
+  parity: none
+  data_bits: 8
+  stop_bits: 1
+
+dallas:
+  - id: onewire_int
+    pin: GPIO04
+    update_interval: 60s
+  - id: onewire_ext
+    pin: GPIO14
+    update_interval: 60s
+  
+modbus:
+  flow_control_pin: GPIO33
+  send_wait_time: 250ms
+
+modbus_controller:
+  - id: lg
+    address: 0x1
+    update_interval: 60s
+    setup_priority: -10
+
+interval:
+  - interval: 30s
+    id: state_machine
+    then: !include { file: esp-lg-control/lg-heatpump-control/lg-heatpump-state-machine.yaml }
+
+text_sensor:
+  - platform: version
+    name: $device_name "firmware version"
+    hide_timestamp: true
+
+  - id: controller_state
+    name: "Controller state"
+    platform: template
+    update_interval: never
+    icon: mdi:state-machine
+  
+  - id: controller_info
+    name: "Controller info"
+    platform: template
+    update_interval: never
+    icon: mdi:memory
+
+number:
+  - id: stooklijn_min_oat
+    name: "Stooklijn Minimum Buitentemperatuur"
+    platform: template
+    min_value: -20
+    max_value: 4
+    step: 1
+    restore_value: yes
+    initial_value: -18
+    unit_of_measurement: "°C"
+    optimistic: true
+    icon: mdi:download-circle-outline
+    set_action:
+      then:
+        lambda: !lambda |-
+            fsm.update_stooklijn();
+  
+  - id: stooklijn_max_oat
+    name: "Stooklijn Maximum Buitentemperatuur"
+    platform: template
+    min_value: 5
+    max_value: 20
+    step: 1
+    restore_value: yes
+    initial_value: 16
+    unit_of_measurement: "°C"
+    optimistic: true
+    icon: mdi:waves-arrow-left
+    set_action:
+      then:
+        lambda: !lambda |-
+            fsm.update_stooklijn();
+  
+  - id: stooklijn_max_wtemp
+    name: "Stooklijn Maximum Watertemperatuur"
+    platform: template
+    min_value: 20
+    max_value: 40
+    step: 1
+    restore_value: yes
+    initial_value: 35
+    unit_of_measurement: "°C"
+    optimistic: true
+    icon: mdi:waves-arrow-right
+    set_action:
+      then:
+        lambda: !lambda |-
+            fsm.update_stooklijn();
+  
+  - id: stooklijn_min_wtemp
+    name: "Stooklijn Minimum Watertemperatuur"
+    platform: template
+    min_value: 22
+    max_value: 30
+    step: 1
+    restore_value: yes
+    initial_value: 25
+    unit_of_measurement: "°C"
+    optimistic: true
+    icon: mdi:waves-arrow-left
+    set_action:
+      then:
+        lambda: !lambda |-
+            fsm.update_stooklijn();
+
+  - platform: template
+    name: "Stooklijn offset"
+    id: wp_stooklijn_offset
+    min_value: -4
+    max_value: 4
+    initial_value: 0
+    step: 1
+    restore_value: yes
+    unit_of_measurement: "°C"
+    optimistic: true
+    icon: mdi:plus-minus-variant
+    set_action:
+      then:
+        lambda: !lambda |-
+            fsm.update_stooklijn();
+  
+  - id: stooklijn_curve
+    name: "Stooklijn Curve"
+    platform: template
+    min_value: -6
+    max_value: 6
+    step: 0.5
+    restore_value: yes
+    initial_value: 0
+    optimistic: true
+    icon: mdi:chart-bell-curve-cumulative
+    set_action:
+      then:
+        lambda: !lambda |-
+            fsm.update_stooklijn();
+  
+  - id: minimum_run_time
+    name: "Minimale run tijd"
+    platform: template
+    min_value: 0
+    max_value: 60
+    step: 1
+    restore_value: yes
+    initial_value: 30
+    unit_of_measurement: "min"
+    optimistic: true
+    icon: mdi:timer-sync-outline
+  
+  - id: external_pump_runover
+    name: "External pump overrun"
+    platform: template
+    min_value: 0
+    max_value: 60
+    step: 1
+    restore_value: yes
+    initial_value: 10
+    unit_of_measurement: "min"
+    optimistic: true
+    icon: mdi:timer-cog-outline
+  
+  - id: oat_silent_always_off
+    name: "Buitentemperatuur silent always off"
+    platform: template
+    min_value: -20
+    max_value: 10
+    step: 1
+    restore_value: yes
+    initial_value: 2
+    unit_of_measurement: "°C"
+    optimistic: true
+    icon: mdi:volume-plus
+  
+  - id: oat_silent_always_on
+    name: "Buitentemperatuur silent always on"
+    platform: template
+    min_value: -20
+    max_value: 20
+    step: 1
+    restore_value: yes
+    initial_value: 6
+    unit_of_measurement: "°C"
+    optimistic: true
+    icon: mdi:volume-off
+  
+  - id: thermostat_off_delay
+    name: "Thermostat off delay"
+    platform: template
+    min_value: 0
+    max_value: 10
+    step: 1
+    restore_value: yes
+    initial_value: 1
+    unit_of_measurement: "min"
+    optimistic: true
+    icon: mdi:timer-off-outline
+  
+  - id: thermostat_on_delay
+    name: "Thermostat on delay"
+    platform: template
+    min_value: 0
+    max_value: 10
+    step: 1
+    restore_value: yes
+    initial_value: 0
+    unit_of_measurement: "min"
+    optimistic: true
+    icon: mdi:timer
+  
+  - id: boost_time
+    name: "Boost duration"
+    platform: template
+    min_value: 0
+    max_value: 180
+    step: 1
+    restore_value: yes
+    initial_value: 60
+    unit_of_measurement: "min"
+    optimistic: true
+    icon: mdi:timer-plus-outline
+  
+  - id: backup_heater_active_temp
+    name: "Buitentemperatuur backup heater active"
+    platform: template
+    min_value: -30
+    max_value: 20
+    step: 1
+    restore_value: yes
+    initial_value: -10
+    optimistic: true
+    icon: mdi:gas-burner
+  
+  - id: water_temp_target_output
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: holding
+    address: 2
+    value_type: U_WORD
+    step: 0.1
+    multiply: 10
+
+switch:
+  - name: "ESP WP Control Restart"
+    platform: restart
+  
+  - id: boost_switch
+    name: "Temperature Boost"
+    platform: template
+    optimistic: true
+    icon: mdi:thermometer-plus
+  
+  - id: silent_mode_switch
+    name: "Silent Mode"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: coil
+    address: 2
+    icon: mdi:volume-off
+  
+  - id: sww_on_off
+    name: "SWW On/Off"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: coil
+    address: 1
+    icon: mdi:shower-head
+
+binary_sensor:
+  - id: pump_running
+    name: "Waterpomp actief"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: discrete_input
+    address: 1
+    icon: mdi:pump
+  
+  - id: compressor_running
+    name: "Compressor actief"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: discrete_input
+    address: 3
+    icon: mdi:car-turbocharger
+  
+  - id: defrosting
+    name: "Defrost actief"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: discrete_input
+    address: 4
+    icon: mdi:snowflake-melt
+  
+  - id: sww_heating
+    name: "SWW Verwarmen"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: discrete_input
+    address: 5
+    icon: mdi:shower-head
+  
+  - id: silent_mode_state
+    name: "Stille modus actief"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: discrete_input
+    address: 7
+    icon: mdi:volume-off
+    
+  - id: backup_heating_1_enabled
+    name: "Backupverwarming actief"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: discrete_input
+    address: 10
+    icon: mdi:water-boiler
+  
+  - id: error
+    name: "Apparaat in storing"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: discrete_input
+    address: 13
+    icon: mdi:alert-circle
+
+sensor:
+  - platform: uptime
+    name: $device_name "Uptime"
+    
+  - id: error_code
+    name: "Storingscode"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: read
+    address: 0
+    value_type: U_WORD
+  
+  - id: bedrijfsmodus
+    name: "ODU-bedrijfscyclus"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: holding
+    address: 1
+    value_type: U_WORD
+    icon: mdi:information-outline
+  
+  - id: water_temp_retour
+    name: "Water retour"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: read
+    address: 2
+    unit_of_measurement: "°C"
+    value_type: S_WORD
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+    icon: mdi:thermometer-chevron-down
+  
+  - id: water_temp_aanvoer
+    name: "Water aanvoer"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: read
+    address: 3
+    unit_of_measurement: "°C"
+    value_type: S_WORD
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+    icon: mdi:thermometer-chevron-up
+  
+  - id: water_temp_backup_heater_outlet
+    name: "Water backupverwarming"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: read
+    address: 4
+    unit_of_measurement: "°C"
+    value_type: S_WORD
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+    icon: mdi:thermometer-chevron-up
+  
+  - id: sww_temp
+    name: "SWW Temperatuur"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: read
+    address: 5
+    unit_of_measurement: "°C"
+    value_type: S_WORD
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+    icon: mdi:thermometer-water
+  
+  - id: binnen_temp
+    name: "Kamertemparatuur"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: read
+    address: 7
+    unit_of_measurement: "°C"
+    value_type: U_WORD
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+    icon: mdi:home-thermometer
+  
+  - id: current_flow_rate
+    name: "Water debiet"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: read
+    address: 8
+    unit_of_measurement: "L/m"
+    value_type: U_WORD
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+      - lambda: |-
+          if (x > 5.0) return x;
+          else return 0.0;
+    icon: mdi:waves-arrow-right
+  
+  - id: buiten_temp
+    name: "Buitentemparatuur"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: read
+    address: 12
+    unit_of_measurement: "°C"
+    value_type: S_WORD
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+      - sliding_window_moving_average:
+          window_size: 15
+          send_every: 15
+    on_value:
+      then:
+        - lambda: !lambda |-
+            static float prev_oat = -100.0;
+            if (abs(round(x) - round(prev_oat)) > 0.1) {
+              fsm.update_stooklijn();
+              prev_oat = x;
+            }
+    icon: mdi:weather-cloudy
+  
+  # - id: lg_modbus_read_16
+  #   name: "LG Modbus read 16"
+  #   platform: modbus_controller
+  #   modbus_controller_id: lg
+  #   register_type: read
+  #   address: 16
+  #   unit_of_measurement: "°C"
+  #   value_type: S_WORD
+  #   accuracy_decimals: 1
+  #   filters:
+  #     - multiply: 0.1
+  #   entity_category: "diagnostic"
+  
+  # - id: lg_modbus_read_17
+  #   name: "LG Modbus read 17"
+  #   platform: modbus_controller
+  #   modbus_controller_id: lg
+  #   register_type: read
+  #   address: 17
+  #   value_type: S_WORD
+  #   accuracy_decimals: 1
+  #   entity_category: "diagnostic"
+  
+  # - id: lg_modbus_read_18
+  #   name: "LG Modbus read 18"
+  #   platform: modbus_controller
+  #   modbus_controller_id: lg
+  #   register_type: read
+  #   address: 18
+  #   unit_of_measurement: "°C"
+  #   value_type: S_WORD
+  #   accuracy_decimals: 1
+  #   filters:
+  #     - multiply: 0.1
+  #   entity_category: "diagnostic"
+  
+  # - id: lg_modbus_read_19
+  #   name: "LG Modbus read 19"
+  #   platform: modbus_controller
+  #   modbus_controller_id: lg
+  #   register_type: read
+  #   address: 19
+  #   unit_of_measurement: "°C"
+  #   value_type: S_WORD
+  #   accuracy_decimals: 1
+  #   filters:
+  #     - multiply: 0.1
+  #   entity_category: "diagnostic"
+  
+  - id: condensor_temp
+    name: "LG Condensor Temperature"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: read
+    address: 20
+    unit_of_measurement: "°C"
+    value_type: S_WORD
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+    icon: mdi:hvac
+
+  # - id: wp_sensed_power
+  #   name: "WP Sensed Power"
+  #   platform: modbus_controller
+  #   modbus_controller_id: lg
+  #   register_type: read
+  #   address: 22
+  #   value_type: U_WORD
+  #   accuracy_decimals: 0
+  #   unit_of_measurement: "W"
+  #   icon: mdi:meter-electric-outline
+  #   entity_category: "diagnostic"
+  
+  # - id: lg_modbus_read_23
+  #   name: "LG Modbus read 23"
+  #   platform: modbus_controller
+  #   modbus_controller_id: lg
+  #   register_type: read
+  #   address: 23
+  #   value_type: U_WORD
+  #   accuracy_decimals: 2
+  #   unit_of_measurement: "bar"
+  #   filters:
+  #     - multiply: 0.01
+  #   entity_category: "diagnostic"
+  
+  - id: compressor_rpm
+    name: "Compressor RPM"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: read
+    address: 24
+    unit_of_measurement: "rpm"
+    value_type: U_WORD
+    accuracy_decimals: 0
+    icon: mdi:car-turbocharger
+
+  - id: doel_temp
+    name: "Target temparatuur circuit 1"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: holding
+    address: 2
+    unit_of_measurement: "°C"
+    value_type: U_WORD
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+    icon: mdi:home-thermometer-outline
+  
+  - id: sww_target
+    name: "Target temparatuur SWW"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: holding
+    address: 8
+    unit_of_measurement: "°C"
+    value_type: U_WORD
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+    icon: mdi:thermometer-water
+  
+  - id: watertemp_target
+    name: "Stooklijn Watertemp Target"
+    platform: template
+    unit_of_measurement: "°C"
+    update_interval: never
+    icon: mdi:home-thermometer-outline
+  
+  - id: wp_delta_t
+    # name: "Delta T"
+    internal: true
+    platform: template
+    unit_of_measurement: "°C"
+    accuracy_decimals: 1
+    lambda: |-
+      //The +0.6 and -0.2 is a correction factor due to innacurate readings. Adapt this to your situation
+      //I do not correct it at the sensor, as the pump uses the uncorrected value for target setting, modulation etc
+      //Messing with this value at the sensor will mess up te script
+      return (float)(id(water_temp_aanvoer).state - id(water_temp_retour).state);
+      // return (float)((id(water_temp_aanvoer).state+0.6)-(id(water_temp_retour).state-0.2));
+    update_interval: 30s
+    icon: mdi:delta
+  
+  - id: derivative_value
+    name: "Derivative"
+    platform: template
+    accuracy_decimals: 1
+    unit_of_measurement: "°C/h" 
+    update_interval: never  
+    icon: mdi:sigma
+
+  - id: cop_guess
+    # name: "COP guess"
+    internal: true
+    platform: template
+    lambda: |-
+      if(id(current_flow_rate).state < 6 || id(wp_delta_t).state <= 0) return 0;
+      if(!id(compressor_running).state || id(wp_sensed_power).state < 300) return 0;
+      if(id(wp_delta_t).state < 0) return 0;
+      return ((id(current_flow_rate).state/60)*(id(wp_delta_t).state*4184))/id(wp_sensed_power).state;
+    accuracy_decimals: 1
+    unit_of_measurement: "COP"
+    update_interval: 60 sec
+    icon: mdi:approximately-equal
+  
+  - id: average_cop_sensor
+    # name: "Average cop"
+    internal: true
+    platform: template
+    accuracy_decimals: 1
+    unit_of_measurement: "COP" 
+    update_interval: never  
+    icon: mdi:sigma
+  
+  - platform: sdm_meter
+    address: 2
+    phase_a:
+      active_power:
+        name: "LG opgenomen vermogen"
+        # id: current_electrical_power
+      power_factor:
+        name: "LG Power Factor"
+      voltage:
+        name: "LG voltage"
+    import_active_energy:
+      name: "LG kWh"
+      device_class: energy
+      state_class: total_increasing
+    frequency:
+      name: "LG net frequency"
+    update_interval: 60s
+  
+  - platform: sdm_meter
+    address: 3
+    phase_a:
+      active_power:
+        name: "Boiler opgenomen vermogen"
+      power_factor:
+        name: "Boiler Power Factor"
+      voltage:
+        name: "Boiler voltage"
+    import_active_energy:
+      name: "Boiler kWh"
+      device_class: energy
+      state_class: total_increasing
+    frequency:
+      name: "Boiler net frequency"
+    update_interval: 60s
+
+  # OneWire
+  - id: board_temp
+    platform: dallas
+    dallas_id: onewire_int
+    address: 0x9c00000bd46ebb28
+    name: "Temparatuur printplaat"
+  
+  - id: underfloor_heating_temp_in
+    platform: dallas
+    dallas_id: onewire_ext
+    address: 0x62efc8e90264ff28
+    name: "Vloerverwarming aanvoer"
+  
+  - id: underfloor_heating_temp_out
+    platform: dallas
+    dallas_id: onewire_ext
+    address: 0x7dedd8eb0264ff28
+    name: "Vloerverwarming retour"
