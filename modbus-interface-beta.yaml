@@ -1,5 +1,5 @@
 substitutions:
-  device_name: Modbus Interface
+  device_name: Modbus Interface Beta
 
 esp32:
   board: esp-wrover-kit
