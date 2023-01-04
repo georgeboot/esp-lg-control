@@ -701,8 +701,8 @@ sensor:
     address: 2
     phase_a:
       active_power:
+        id: wp_sensed_power
         name: "LG opgenomen vermogen"
-        # id: current_electrical_power
       power_factor:
         name: "LG Power Factor"
       voltage:
