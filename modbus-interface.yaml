@@ -529,18 +529,31 @@ sensor:
             }
     icon: mdi:weather-cloudy
   
-  # - id: lg_modbus_read_16
-  #   name: "LG Modbus read 16"
-  #   platform: modbus_controller
-  #   modbus_controller_id: lg
-  #   register_type: read
-  #   address: 16
-  #   unit_of_measurement: "°C"
-  #   value_type: S_WORD
-  #   accuracy_decimals: 1
-  #   filters:
-  #     - multiply: 0.1
-  #   entity_category: "diagnostic"
+  - id: pipe_in_temp
+    name: "LG Pipe in temp"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: read
+    address: 16
+    unit_of_measurement: "°C"
+    value_type: S_WORD
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+    entity_category: "diagnostic"
+  
+  - id: pipe_out_temp
+    name: "LG Pipe out temp"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: read
+    address: 17
+    unit_of_measurement: "°C"
+    value_type: S_WORD
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+    entity_category: "diagnostic"
   
   # - id: lg_modbus_read_17
   #   name: "LG Modbus read 17"
@@ -565,18 +578,18 @@ sensor:
   #     - multiply: 0.1
   #   entity_category: "diagnostic"
   
-  # - id: lg_modbus_read_19
-  #   name: "LG Modbus read 19"
-  #   platform: modbus_controller
-  #   modbus_controller_id: lg
-  #   register_type: read
-  #   address: 19
-  #   unit_of_measurement: "°C"
-  #   value_type: S_WORD
-  #   accuracy_decimals: 1
-  #   filters:
-  #     - multiply: 0.1
-  #   entity_category: "diagnostic"
+  - id: fan
+    name: "LG Fan speed"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: read
+    address: 19
+    unit_of_measurement: "rpm"
+    value_type: U_WORD
+    accuracy_decimals: 1
+    filters:
+      - multiply: 0.1
+    entity_category: "diagnostic"
   
   - id: condensor_temp
     name: "LG Condensor Temperature"
@@ -591,30 +604,31 @@ sensor:
       - multiply: 0.1
     icon: mdi:hvac
 
-  # - id: wp_sensed_power
-  #   name: "WP Sensed Power"
-  #   platform: modbus_controller
-  #   modbus_controller_id: lg
-  #   register_type: read
-  #   address: 22
-  #   value_type: U_WORD
-  #   accuracy_decimals: 0
-  #   unit_of_measurement: "W"
-  #   icon: mdi:meter-electric-outline
-  #   entity_category: "diagnostic"
+  - id: high_pressure
+    name: "LG High pressure"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: read
+    address: 22
+    value_type: U_WORD
+    accuracy_decimals: 2
+    unit_of_measurement: "bar"
+    filters:
+      - multiply: 0.01
+    entity_category: "diagnostic"
   
-  # - id: lg_modbus_read_23
-  #   name: "LG Modbus read 23"
-  #   platform: modbus_controller
-  #   modbus_controller_id: lg
-  #   register_type: read
-  #   address: 23
-  #   value_type: U_WORD
-  #   accuracy_decimals: 2
-  #   unit_of_measurement: "bar"
-  #   filters:
-  #     - multiply: 0.01
-  #   entity_category: "diagnostic"
+  - id: low_pressure
+    name: "LG Low pressure"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: read
+    address: 23
+    value_type: U_WORD
+    accuracy_decimals: 2
+    unit_of_measurement: "bar"
+    filters:
+      - multiply: 0.01
+    entity_category: "diagnostic"
   
   - id: compressor_rpm
     name: "Compressor RPM"
