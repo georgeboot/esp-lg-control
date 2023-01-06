@@ -35,7 +35,8 @@ logger:
     esp32.preferences: WARN
     sensor: WARN
     text_sensor: WARN
-    dallas.sensor: WARN #disable if dallas is not used
+    dallas.sensor: WARN
+    sdm_meter: WARN
     number: WARN
 
 ethernet:
@@ -320,6 +321,14 @@ switch:
     platform: template
     optimistic: true
     icon: mdi:thermometer-plus
+  
+  - id: heating_switch
+    name: "Verwarming On/Off"
+    platform: modbus_controller
+    modbus_controller_id: lg
+    register_type: coil
+    address: 0
+    # icon: mdi:volume-off
   
   - id: silent_mode_switch
     name: "Silent Mode"
