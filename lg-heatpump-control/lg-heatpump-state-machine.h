@@ -26,9 +26,7 @@
         uint_fast32_t run_start_time = 0; //run_time_value of start of heat run
         int current_boost_offset = 0 ;//keep track of offset during boost mode. Will be 0 if boost is not active
         std::vector<float> derivative; //vector of floats to integrate derivative (used in control logic)
-        std::vector<float> cop_vector; //vector of floats to integrate cop
-        float average_cop = 0; //keep track off average cop during last 15 minutes
-        bool backup_heat_cop_limit_trigger = false; //if backup heat triggered due to low cop?
+        bool backup_heat_temp_limit_trigger = false; //if backup heat triggered due to low temperature (always on)?
         bool update_stooklijn_bool = true;
       public:
         input_struct* input[16]; //list of all inputs
@@ -68,10 +66,9 @@
         float calculate_stooklijn();
         bool thermostat_state();
         void calculate_derivative(float tracking_value);
-        void calculate_average_cop();
         void heat(bool mode);
         void external_pump(bool mode);
-        void backup_heat(bool mode,bool cop_limit_trigger = false);
+        void backup_heat(bool mode,bool temp_limit_trigger = false);
         void boost(bool mode);
         void toggle_boost();
         void silent_mode(bool mode);
@@ -82,7 +79,7 @@
         void add_event(input_types ev);
         bool check_change_events();
         bool compressor_modulation();
-        bool check_low_cop_trigger();
+        bool check_low_temp_trigger();
         void set_target_temp(float target);
     };
   input_struct::input_struct(uint_fast32_t* run_time_pointer){
@@ -226,14 +223,6 @@
       toggle_boost();
     }
     toggle_silent_mode();
-    //if running for heating record COP and publish value
-    if(state() == STABILIZE || state() == RUN || state() == OVERSHOOT || state() == STALL){
-      calculate_average_cop();
-    } else {
-      cop_vector.clear();
-      average_cop = 0;
-      id(average_cop_sensor).publish_state(0);
-    }
     if(input[WP_PUMP]->state && state() != SWW && state() != DEFROST){
       //calculate derivative and publish new value
       calculate_derivative(input[TRACKING_VALUE]->value);
@@ -359,27 +348,6 @@
     id(derivative_value).publish_state(derivative_D_10*60);
   }
   //***************************************************************
-  //*******************COP*****************************************
-  //***************************************************************
-  void state_machine_class::calculate_average_cop(){
-    float current_cop = id(cop_guess).state;
-    //prevent invalid readings
-    if(current_cop > 0.5) cop_vector.push_back(current_cop);
-    //limit size to 30 elements(15 minutes)
-    if(cop_vector.size() > 31) cop_vector.erase(cop_vector.begin());
-    average_cop = 0;
-    if(cop_vector.size() > 10) {
-      //after at least 10 readings
-      std::vector<float>::iterator it;
-      float it_total = 0;
-      for(it = cop_vector.begin(); it != cop_vector.end(); it++){
-        it_total += *it;
-      }
-      average_cop = it_total/cop_vector.size();
-    }
-    id(average_cop_sensor).publish_state(average_cop);
-  }
-  //***************************************************************
   //*******************Heat****************************************
   //***************************************************************
   void state_machine_class::heat(bool mode){
@@ -437,7 +405,7 @@
   //***************************************************************
   //*******************Backup Heat*********************************
   //***************************************************************
-  void state_machine_class::backup_heat(bool mode,bool cop_limit_trigger){
+  void state_machine_class::backup_heat(bool mode,bool temp_limit_trigger){
     if(mode){
       //relay heat must be on, otherwise it is an invalid request
       if(!input[RELAY_HEAT]->state){
@@ -448,9 +416,9 @@
         if(!id(relay_backup_heat).state){
           id(relay_backup_heat).turn_on();
           input[BACKUP_HEAT]->receive_state(true);
-          if(cop_limit_trigger) {
-            backup_heat_cop_limit_trigger = true;
-            id(controller_info).publish_state("Backup heat on due to low COP");
+          if(temp_limit_trigger) {
+            backup_heat_temp_limit_trigger = true;
+            id(controller_info).publish_state("Backup heat on due to low temp");
           } else if(input[SWW_RUN]->state) {
             id(controller_info).publish_state("Backup heat on due to SWW run");
           } else if(input[DEFROST_RUN]->state) {
@@ -467,13 +435,13 @@
           ESP_LOGD(state_name(),"Invalid configuration relay_backup_heat on before relay_pump.");
           id(controller_info).publish_state("Invalid config: backup_heat on before pump.");
         }
-        backup_heat_cop_limit_trigger = false;
+        backup_heat_temp_limit_trigger = false;
       }
     } else {
       if(id(relay_backup_heat).state){
         id(relay_backup_heat).turn_off();
         input[BACKUP_HEAT]->receive_state(false);
-        backup_heat_cop_limit_trigger = false;
+        backup_heat_temp_limit_trigger = false;
       } 
       //all else can remain on
     }
@@ -549,10 +517,9 @@
     }
   }
   int state_machine_class::get_target_offset(){
-    if(input[OAT]->value > 15) return -3;
-    if(input[OAT]->value < id(oat_silent_always_off).state) return -3;
-    if(input[OAT]->value < id(oat_silent_always_on).state) return -1;
-    return -2;
+    if(input[OAT]->value >= 10) return -3;
+    if(input[OAT]->value >= id(oat_silent_always_on).state) return -2;
+    return -1;
   }
   void state_machine_class::set_new_target(float new_target){
     //TODO check for multiple target changes during run
@@ -630,11 +597,11 @@
             backup_heat(false);
             ESP_LOGD(state_name(),"Backup heat off input[OAT]->value > backup_heater_active_temp");
             id(controller_info).publish_state("Backup heat off due to high oat");
-          } else if(backup_heat_cop_limit_trigger && average_cop > 0.0 && average_cop > (backup_heater_cop_limit+0.2) ){
-            //if triggered due to low cop and situation improved (with some hysteresis)
+          } else if(backup_heat_temp_limit_trigger && input[OAT]->value > id(backup_heater_always_on_temp).state){
+            //if triggered due to low temp and situation improved (with some hysteresis)
             backup_heat(false);
-            ESP_LOGD(state_name(),"Backup heat off due to cop improved");
-            id(controller_info).publish_state("Backup heat off due to cop improvement");
+            ESP_LOGD(state_name(),"Backup heat off due to temperature improved");
+            id(controller_info).publish_state("Backup heat off due to temperature improvement");
           }
         }
       }
@@ -647,8 +614,8 @@
     else if(!input[SILENT_MODE]->state && id(compressor_rpm).state <= 70) return true;
     else return false;
   }
-  bool state_machine_class::check_low_cop_trigger(){
-    return (input[OAT]->value <= id(backup_heater_active_temp).state && average_cop > 0.0 && average_cop < backup_heater_cop_limit && id(cop_guess).state < 2);
+  bool state_machine_class::check_low_temp_trigger(){
+    return (input[OAT]->value <= id(backup_heater_always_on_temp).state);
   }
   //update target temp through modbus
   void state_machine_class::set_target_temp(float target){

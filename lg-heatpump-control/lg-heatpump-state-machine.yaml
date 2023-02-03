@@ -105,10 +105,11 @@ lambda: !lambda |-
         }
         //three minutes delay to allow pump to run and values to stabilise 
         if(fsm.seconds_since_state_start() < (3*60)) break;
-        //set target, with minimum of tracking value+2 to ensure compressor start
+        //set target, with minimum of tracking value+2 (to ensure compressor start)
+        //but not above stooklijn_target
         int new_target = fsm.input[STOOKLIJN_TARGET]->value + fsm.get_target_offset();
         if(new_target < fsm.input[TRACKING_VALUE]->value - 2) new_target = fsm.input[TRACKING_VALUE]->value - 2;
-        if(new_target > fsm.input[STOOKLIJN_TARGET]->value) new_target = fsm.input[STOOKLIJN_TARGET]->value; 
+        if(new_target > fsm.input[STOOKLIJN_TARGET]->value) new_target = fsm.input[STOOKLIJN_TARGET]->value + fsm.get_target_offset();
         fsm.set_new_target(new_target);
         ESP_LOGD(fsm.state_name(), "Run start initial target set; stooklijn_target: %f pendel_target: %f tracking_value: %f ",fsm.input[STOOKLIJN_TARGET]->value,fsm.input[TEMP_NEW_TARGET]->value,fsm.input[TRACKING_VALUE]->value);
         fsm.set_run_start_time();
@@ -209,8 +210,8 @@ lambda: !lambda |-
         fsm.add_event(BACKUP_HEAT);
         if(fsm.check_change_events()) break;
         
-        //check low COP
-        if(fsm.check_low_cop_trigger() && fsm.input[BACKUP_HEAT]->seconds_since_change() > (15*60)) {
+        //check low TEMP (for backup_heat_always_on)
+        if(fsm.check_low_temp_trigger() && fsm.input[BACKUP_HEAT]->seconds_since_change() > (15*60)) {
           fsm.backup_heat(true,true);
         }
 
@@ -319,8 +320,8 @@ lambda: !lambda |-
         fsm.add_event(BACKUP_HEAT);
         if(fsm.check_change_events()) break;
         
-        //check low COP
-        if(fsm.check_low_cop_trigger() && fsm.input[BACKUP_HEAT]->seconds_since_change() > (15*60)) {
+        //check low temp (for backup_heat_always_on)
+        if(fsm.check_low_temp_trigger() && fsm.input[BACKUP_HEAT]->seconds_since_change() > (15*60)) {
           fsm.backup_heat(true,true);
         }
 
