@@ -3,7 +3,7 @@ switch:
     name: "Dummy external pump relay"
     id: "relay_pump"
     optimistic: true
-  - id: heat_relay
+  - id: relay_heat
     name: "Verwarming On/Off"
     platform: modbus_controller
     modbus_controller_id: lg
