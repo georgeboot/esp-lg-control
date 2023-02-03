@@ -3,3 +3,4 @@ switch:
     name: "Termostat On/Off"
     id: thermostat_signal
     optimistic: true
+    restore_state: true
