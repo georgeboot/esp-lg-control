@@ -1,0 +1,9 @@
+{
+    "files.associations": {
+        ".php_cs.dist": "php",
+        "phpstan.neon.dist": "yaml",
+        "__config": "cpp",
+        "__nullptr": "cpp",
+        "vector": "cpp"
+    }
+}

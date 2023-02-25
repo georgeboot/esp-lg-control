@@ -1,12 +1,13 @@
 binary_sensor:
-  - platform: gpio # Thermostat input signal is connected to this input pin
+  - id: thermostat_signal
+    name: "Termostat On/Off"
+    platform: gpio
     pin:
-      number: GPIO27
+      mcp23xxx: mcp23008_hub
+      number: 4
       mode:
         input: true
-        pullup: false
-    name: "WP Nest Signal"
-    id: thermostat_signal
+      inverted: false
     filters:
       - delayed_on: 500ms # Debounce
     icon: mdi:thermostat
